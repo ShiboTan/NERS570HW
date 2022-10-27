@@ -1,0 +1,343 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <math.h>
+#define mm_clear_typecode(typecode) ((*typecode)[0]=(*typecode)[1]= \(*typecode)[2]=' ',(*typecode)[3]='G')
+#define mm_set_matrix(typecode)	((*typecode)[0]='M')
+#define mm_set_coordinate(typecode)	((*typecode)[1]='C')
+#define mm_set_array(typecode)	((*typecode)[1]='A')
+#define mm_set_dense(typecode)	mm_set_array(typecode)
+#define mm_set_sparse(typecode)	mm_set_coordinate(typecode)
+
+#define mm_set_complex(typecode)((*typecode)[2]='C')
+#define mm_set_real(typecode)	((*typecode)[2]='R')
+#define mm_set_pattern(typecode)((*typecode)[2]='P')
+#define mm_set_integer(typecode)((*typecode)[2]='I')
+
+
+#define mm_set_symmetric(typecode)((*typecode)[3]='S')
+#define mm_set_general(typecode)((*typecode)[3]='G')
+#define mm_set_skew(typecode)	((*typecode)[3]='K')
+#define mm_set_hermitian(typecode)((*typecode)[3]='H')
+#define MM_MAX_LINE_LENGTH 1025
+#define MM_PREMATURE_EOF   12
+#define MatrixMarketBanner "%%MatrixMarket"
+#define MM_COULD_NOT_WRITE_FILE	17
+
+#define MM_MTX_STR		"matrix"
+#define MM_ARRAY_STR	"array"
+#define MM_DENSE_STR	"array"
+#define MM_COORDINATE_STR "coordinate"
+#define MM_SPARSE_STR	"coordinate"
+#define MM_COMPLEX_STR	"complex"
+#define MM_REAL_STR		"real"
+#define MM_INT_STR		"integer"
+#define MM_GENERAL_STR  "general"
+#define MM_SYMM_STR		"symmetric"
+#define MM_HERM_STR		"hermitian"
+#define MM_SKEW_STR		"skew-symmetric"
+#define MM_PATTERN_STR  "pattern"
+
+#define mm_is_matrix(typecode)	((typecode)[0]=='M')
+
+#define mm_is_sparse(typecode)	((typecode)[1]=='C')
+#define mm_is_coordinate(typecode)((typecode)[1]=='C')
+#define mm_is_dense(typecode)	((typecode)[1]=='A')
+#define mm_is_array(typecode)	((typecode)[1]=='A')
+
+#define mm_is_complex(typecode)	((typecode)[2]=='C')
+#define mm_is_real(typecode)		((typecode)[2]=='R')
+#define mm_is_pattern(typecode)	((typecode)[2]=='P')
+#define mm_is_integer(typecode) ((typecode)[2]=='I')
+
+#define mm_is_symmetric(typecode)((typecode)[3]=='S')
+#define mm_is_general(typecode)	((typecode)[3]=='G')
+#define mm_is_skew(typecode)	((typecode)[3]=='K')
+#define mm_is_hermitian(typecode)((typecode)[3]=='H')
+
+typedef char MM_typecode[4];
+int mm_is_valid(MM_typecode matcode);
+char *mm_strdup(const char *s);
+char  *mm_typecode_to_str(MM_typecode matcode);
+int mm_read_banner(FILE *f, MM_typecode *matcode);
+int mm_read_mtx_crd_size(FILE *f, int *M, int *N, int *nz );
+int mm_write_banner(FILE *f, MM_typecode matcode); 
+int mm_write_mtx_array_size(FILE *f, int M, int N);
+double dot_product(double *x, double *y, int N);
+double normalize(double *x, int N);
+
+int main(int argc,char *argv[]){
+    MM_typecode matcode="MARG";
+    FILE *fm;
+    fm = fopen(argv[1],"r");	
+    int M, N, nz;   
+    int i, j, *I, *J;
+    double *val;
+    FILE *qmtr;
+    qmtr = fopen("q.mtx","w");	    
+    FILE *rmtr;
+    rmtr = fopen("r.mtx","w");
+
+    mm_read_mtx_crd_size(fm, &M, &N, &nz);
+
+    double* A[M];
+    double* x;
+
+    for (i = 0; i < M; i++)
+        A[i] = (double *)malloc(N * sizeof(double));
+
+    x = (double *) malloc(nz * sizeof(double));
+
+    for(i=0; i<M; i++) {
+      for(j=0;j<N;j++) {
+         A[i][j] = 0.0;
+      }
+    }
+
+
+    I = (int *) malloc(nz * sizeof(int));
+    J = (int *) malloc(nz * sizeof(int));
+    val = (double *) malloc(nz * sizeof(double));
+    //real number of nonzero values
+    int nzz = 0;
+
+    for (i=0; i<nz; i++)
+    {
+        fscanf(fm, "%d %d %lg\n", &I[i], &J[i], &val[i]);
+        I[i]--;  /* adjust from 1-based to 0-based */
+        J[i]--;
+        //printf("I = %d\n", I[i]);
+        //printf("J = %d\n", J[i]);
+        //printf("val = %0.20lg\n",val[i]);
+	//printf("%d\n",i);
+	nzz++;
+	if(val[i] == 0){nzz--;}
+
+    }
+
+    for(i=0; i<nz; i++) {
+        A[I[i]][J[i]] = val[i];
+	//printf("A = %lg\n", A[I[i]][J[i]]);
+	//printf("%d\n",i);
+    }
+    
+    //QR factorization
+
+    double* v[M];
+    double* q[M];
+    double* r[M];    
+    for (i = 0; i < M; i++)
+        v[i] = (double *)malloc(N * sizeof(double));
+    for (i = 0; i < M; i++)
+        q[i] = (double *)malloc(N * sizeof(double));
+    for (i = 0; i < M; i++)
+        r[i] = (double *)malloc(N * sizeof(double));
+    for(i=0; i<M; i++) {
+      for(j=0;j<N;j++) {
+         r[i][j] = 0.0;
+      }
+    }
+    // 1st step
+    for (i=0; i<M; i++){
+	for(j=0; j< N; j++){    
+            v[j][i] = A[i][j];
+	}	
+    }
+
+    // 2nd step
+    int k;
+    for (j=0; j<N; j++){
+        r[j][j] = normalize(v[j], N);
+        for (i=0; i<M; i++){
+	    q[j][i] = v[j][i]/r[j][j];
+	}	
+	for(k=j+1; k<N; k++){
+	    r[j][k] = dot_product(q[j],v[k],N);
+	    for (i=0; i<M; i++){
+	        v[k][i] -= r[j][k]*q[j][i];
+	    }	    
+	}	    
+    }
+    //transpose q,r matrix
+    double* Q[M];
+    double* R[M];
+    for (i = 0; i < M; i++){
+        Q[i] = (double *)malloc(N * sizeof(double));
+        R[i] = (double *)malloc(N * sizeof(double));
+    }	
+    for(i=0; i<M; i++) {
+        for(j=0; j<N; j++) {
+            Q[j][i] = q[i][j];
+	    R[j][i] = r[i][j];
+      }
+    }
+    
+    mm_write_banner(qmtr, matcode); 
+    mm_write_mtx_array_size(qmtr, N, N);
+    
+    for (i=0; i<N; i++){
+        for (j=0; j<N; j++){
+            fprintf(qmtr, "%10.20g\n", q[i][j]);
+	}    
+    }
+    mm_write_banner(rmtr, matcode);
+    mm_write_mtx_array_size(rmtr, N, N);
+    
+    for (i=0; i<N; i++){
+        for (j=0; j<N; j++){
+            fprintf(rmtr, "%10.20g\n", r[j][i]);
+        }
+    }
+
+    double norm1 = 0.0;
+    for (i=0; i<N; i++){
+        norm1 += (1 - dot_product(q[i],q[i],N))*(1 - dot_product(q[i],q[i],N)); 
+    }
+    norm1 = sqrt(norm1);
+    printf("||I-Q^T Q||_2= %10.15g\n" , norm1);	    
+
+    double norm2 = 0.0;
+    for (i=0; i<M; i++){
+    	for (j=0; j<N; j++){
+	    norm2 += (A[i][j] - dot_product(Q[i],R[j],N))*(A[i][j]-dot_product(Q[i],R[j],N));  
+	}
+    }
+    norm2 = sqrt(norm2);
+    printf("||A-QR||_2=%10.15g\n", norm2);	    
+}
+
+
+double dot_product(double *x, double *y, int N) { 
+ 
+    int i; 
+    double ans = 0; 
+ 
+    for(i=0; i<N; ++i) 
+        ans += x[i]*y[i]; 
+ 
+    return ans; 
+} 
+ 
+double normalize(double *x, int N) { 
+ 
+    /* Compute norm */ 
+    double norm = sqrt(dot_product(x, x, N)); 
+
+    return norm;
+} 
+
+int mm_read_mtx_crd_size(FILE *f, int *M, int *N, int *nz )
+{
+    char line[MM_MAX_LINE_LENGTH];
+    int num_items_read;
+
+    /* set return null parameter values, in case we exit with errors */
+    *M = *N = *nz = 0;
+
+    /* now continue scanning until you reach the end-of-comments */
+    do 
+    {
+        if (fgets(line,MM_MAX_LINE_LENGTH,f) == NULL) 
+            return MM_PREMATURE_EOF;
+    }while (line[0] == '%');
+
+    /* line[] is either blank or has M,N, nz */
+    if (sscanf(line, "%d %d %d", M, N, nz) == 3)
+        return 0;
+        
+    else
+    do
+    { 
+        num_items_read = fscanf(f, "%d %d %d", M, N, nz); 
+        if (num_items_read == EOF) return MM_PREMATURE_EOF;
+    }
+    while (num_items_read != 3);
+
+    return 0;
+}
+
+int mm_write_mtx_array_size(FILE *f, int M, int N)
+{
+    if (fprintf(f, "%d %d\n", M, N) != 2)
+        return MM_COULD_NOT_WRITE_FILE;
+    else 
+        return 0;
+}
+
+
+int mm_write_banner(FILE *f, MM_typecode matcode)
+{
+    char *str = mm_typecode_to_str(matcode);
+    int ret_code;
+
+    ret_code = fprintf(f, "%s %s\n", MatrixMarketBanner, str);
+    free(str);
+    if (ret_code !=2 )
+        return MM_COULD_NOT_WRITE_FILE;
+    else
+        return 0;
+}
+
+char *mm_strdup(const char *s)
+{
+	int len = strlen(s);
+	char *s2 = (char *) malloc((len+1)*sizeof(char));
+	return strcpy(s2, s);
+}
+char  *mm_typecode_to_str(MM_typecode matcode)
+{
+    char buffer[MM_MAX_LINE_LENGTH];
+    char *types[4];
+	char *mm_strdup(const char *);
+    int error =0;
+
+    /* check for MTX type */
+    if (mm_is_matrix(matcode))
+        types[0] = MM_MTX_STR;
+    else
+        error=1;
+
+    /* check for CRD or ARR matrix */
+    if (mm_is_sparse(matcode))
+        types[1] = MM_SPARSE_STR;
+    else
+    if (mm_is_dense(matcode))
+        types[1] = MM_DENSE_STR;
+    else
+        return NULL;
+
+    /* check for element data type */
+    if (mm_is_real(matcode))
+        types[2] = MM_REAL_STR;
+    else
+    if (mm_is_complex(matcode))
+        types[2] = MM_COMPLEX_STR;
+    else
+    if (mm_is_pattern(matcode))
+        types[2] = MM_PATTERN_STR;
+    else
+    if (mm_is_integer(matcode))
+        types[2] = MM_INT_STR;
+    else
+        return NULL;
+
+
+    /* check for symmetry type */
+    if (mm_is_general(matcode))
+        types[3] = MM_GENERAL_STR;
+    else
+    if (mm_is_symmetric(matcode))
+        types[3] = MM_SYMM_STR;
+    else
+    if (mm_is_hermitian(matcode))
+        types[3] = MM_HERM_STR;
+    else
+    if (mm_is_skew(matcode))
+        types[3] = MM_SKEW_STR;
+    else
+        return NULL;
+
+    sprintf(buffer,"%s %s %s %s", types[0], types[1], types[2], types[3]);
+    return mm_strdup(buffer);
+
+}
