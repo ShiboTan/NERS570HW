@@ -1,0 +1,142 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+#include <math.h>
+
+int main(int argc,char *argv[]){
+	char* solver = argv[1];
+	char *nn = argv[2];
+	int n = atoi(nn)+2;
+	char* solver1 = "JI";
+	char* solver2 = "GS";
+	char* solver3 = "RB";
+        int i,j,its,its1;
+	double residual1 = 1.0;
+	double residual0 = 1.0;
+
+	double* u0[n];
+	double* u1[n];
+        for (i = 0; i < n; i++){
+        	u0[i] = (double *)malloc(n * sizeof(double));
+		u1[i] = (double *)malloc(n * sizeof(double));
+	}
+	for(i=0; i<n; i++) {
+     		for(j=0;j<n;j++) {
+			if (i==0 || i == n-1){
+        			u0[i][j] = 0.0;
+				u1[i][j] = 0.0;
+			}
+			if (j==0 || j == n-1){
+				u0[i][j] = 0.0;
+				u1[i][j] = 0.0;
+			}
+			if (i != 0 && i != n-1 && j != 0 && j !=n-1){
+				u0[i][j] = 1.0;
+				u1[i][j] = 1.0;
+			}
+      		}
+    	}
+
+	clock_t start = clock();
+	int initial_re = n-2;
+
+	if(strcmp( solver1 , solver) == 0){
+		printf("JI\n");
+		for(its=0; its<500000 ;its++) {
+			residual0 = residual1;
+			residual1 = 0;
+			for(i=1; i<n-1; i++) {
+      				for(j=1; j<n-1; j++) {
+					u1[i][j] = u0[i][j] + (u0[i+1][j] + u0[i][j+1] + u0[i-1][j] + u0[i][j-1] - 4*u0[i][j])/4;				
+				}
+			}
+			
+			for(i=1; i<n-1; i++) {
+      				for(j=1;j<n-1;j++){
+					residual1 += (u1[i][j] - u0[i][j])*(u1[i][j] - u0[i][j]); 
+					u0[i][j] = u1[i][j];
+				}
+			}
+
+			residual1 = sqrt(residual1);
+
+		if( residual1/initial_re <= 10E-9)
+			break;
+		} 
+	}
+
+	if(strcmp( solver2 , solver) == 0){
+		printf("GS\n");
+                for(its=0; its<500000 ;its++) {
+                        residual0 = residual1;
+                        residual1 = 0;
+                        for(i=1; i<n-1; i++) {
+                                for(j=1; j<n-1; j++) {
+                                        u1[i][j] = (u1[i+1][j] + u1[i][j+1] + u1[i-1][j] + u1[i][j-1])/4;
+                                }
+                        }
+
+                        for(i=1; i<n-1; i++) {
+                                for(j=1;j<n-1;j++){
+                                        residual1 += (u1[i][j] - u0[i][j])*(u1[i][j] - u0[i][j]);
+                                        u0[i][j] = u1[i][j];
+                                }
+                        }
+
+                        residual1 = sqrt(residual1);
+
+                        if( residual1/initial_re <= 10E-9)
+                        break;
+                }
+        }
+	if(strcmp( solver3 , solver) == 0){
+                printf("RB\n");
+                for(its=0; its<500000 ;its++) {
+                        residual0 = residual1;
+                        residual1 = 0;
+                        for(i=1; i<n/2; i++) {
+                                for(j=1; j<n/2; j++) {
+                                        u1[2*i-1][2*j-1] = (u1[2*i][2*j-1] + u1[2*i-1][2*j] + u1[2*i-2][2*j-1] + u1[2*i-1][2*j-2])/4;
+					u1[2*i][2*j] = (u1[2*i+1][2*j] + u1[2*i][2*j+1] + u1[2*i-1][2*j] + u1[2*i][2*j-1])/4;
+                                }
+                        }
+                     
+		        for(i=1; i<n/2; i++) {
+                                for(j=1; j<n/2; j++) {
+                                        u1[2*i-1][2*j] = (u1[2*i][2*j] + u1[2*i-1][2*j+1] + u1[2*i-2][2*j] + u1[2*i-1][2*j-1])/4;
+                                        u1[2*i][2*j-1] = (u1[2*i+1][2*j-1] + u1[2*i][2*j] + u1[2*i-1][2*j-1] + u1[2*i][2*j-2])/4;
+                                }
+                        }
+				
+
+                        for(i=1; i<n-1; i++) {
+                                for(j=1;j<n-1;j++){
+                                        residual1 += (u1[i][j] - u0[i][j])*(u1[i][j] - u0[i][j]);
+                                        u0[i][j] = u1[i][j];
+                                }
+                        }
+
+                        residual1 = sqrt(residual1);
+
+                        if( residual1/initial_re <= 10E-9)
+                        break;
+                }
+        }
+
+        printf("%d\n", n/2-1);	
+	double sr;
+	sr = residual1/residual0;
+	int its2=ceil(log(10E-7)/log(sr));
+
+       	
+	clock_t end = clock();
+	double time_taken = (double)(end - start)/CLOCKS_PER_SEC;
+	printf("Converged\n");
+	printf("solved time (s): %10.4lg\n", time_taken);
+	printf("iters: %d\n", its);
+	printf("residual: %10.10lg\n\n", residual1/initial_re);
+	printf("Estimated spectral radius: %10.4lg\n", sr);
+	printf("Iterations to reach 10^-6: %d\n", its2);
+       	printf("Average time per iter (ms): %10.4lg\n", time_taken*1000/its);	
+}
